@@ -3,6 +3,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <signal.h>
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -15,6 +16,12 @@
                 perror(m); \
                 exit(EXIT_FAILURE); \
         } while(0)
+
+void handler(int sig)
+{
+	printf("recv a sig=%d\n", sig);
+	exit(EXIT_SUCCESS);
+}
 
 int main(void)
 {
@@ -48,16 +55,45 @@ int main(void)
 
 	printf("ip=%s port=%d\n", inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
 
-	char recvbuf[1024];
-	while (1)
+
+	pid_t pid;
+	pid = fork();
+	if (pid == -1)
+		ERR_EXIT("fork");
+	
+	if (pid == 0)
 	{
-		memset(recvbuf, 0, sizeof(recvbuf));
-		int ret = read(conn, recvbuf, sizeof(recvbuf));
-		fputs(recvbuf, stdout);
-		write(conn, recvbuf, ret);
+		signal(SIGUSR1, handler);
+		char sendbuf[1024] = {0};
+		while (fgets(sendbuf, sizeof(sendbuf), stdin) != NULL)
+		{
+			write(conn, sendbuf, strlen(sendbuf));
+			memset(sendbuf, 0, sizeof(sendbuf));
+		}
+		printf("child close\n");
+		exit(EXIT_SUCCESS);
 	}
-	close(conn);
-	close(listenfd);
+	else
+	{
+		char recvbuf[1024];
+		while (1)
+		{
+			memset(recvbuf, 0, sizeof(recvbuf));
+			int ret = read(conn, recvbuf, sizeof(recvbuf));
+			if (ret == -1)
+				ERR_EXIT("read");
+			else if (ret == 0)
+			{
+				printf("peer close\n");
+				break;
+			}
+			
+			fputs(recvbuf, stdout);
+		}
+		printf("parent close\n");
+		kill(pid, SIGUSR1);
+		exit(EXIT_SUCCESS);
+	}
 	
 	return 0;
 }

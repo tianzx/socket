@@ -16,6 +16,25 @@
                 exit(EXIT_FAILURE); \
         } while(0)
 
+void do_service(int conn)
+{
+	char recvbuf[1024];
+        while (1)
+        {
+                memset(recvbuf, 0, sizeof(recvbuf));
+                int ret = read(conn, recvbuf, sizeof(recvbuf));
+		if (ret == 0)
+		{
+			printf("client close\n");
+			break;
+		}
+		else if (ret == -1)
+			ERR_EXIT("read");
+                fputs(recvbuf, stdout);
+                write(conn, recvbuf, ret);
+        }
+}
+
 int main(void)
 {
 	int listenfd;
@@ -43,21 +62,27 @@ int main(void)
 	struct sockaddr_in peeraddr;
 	socklen_t peerlen = sizeof(peeraddr);
 	int conn;
-	if ((conn = accept(listenfd, (struct sockaddr*)&peeraddr, &peerlen)) < 0)
-		ERR_EXIT("accept");
 
-	printf("ip=%s port=%d\n", inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
-
-	char recvbuf[1024];
+	pid_t pid;
 	while (1)
 	{
-		memset(recvbuf, 0, sizeof(recvbuf));
-		int ret = read(conn, recvbuf, sizeof(recvbuf));
-		fputs(recvbuf, stdout);
-		write(conn, recvbuf, ret);
+		if ((conn = accept(listenfd, (struct sockaddr*)&peeraddr, &peerlen)) < 0)
+			ERR_EXIT("accept");
+
+		printf("ip=%s port=%d\n", inet_ntoa(peeraddr.sin_addr), ntohs(peeraddr.sin_port));
+
+		pid = fork();
+		if (pid == -1)
+			ERR_EXIT("fork");
+		if (pid == 0)
+		{
+			close(listenfd);
+			do_service(conn);
+			exit(EXIT_SUCCESS);
+		}
+		else
+			close(conn);
 	}
-	close(conn);
-	close(listenfd);
 	
 	return 0;
 }
