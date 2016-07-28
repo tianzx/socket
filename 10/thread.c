@@ -32,5 +32,6 @@ int main(void){
 		printf("A");
 		fflush(stdout);
 	}
+	sleep(1);
 	return 0;
 }
